@@ -19,25 +19,32 @@
         vm.a = 0;
         vm.b = 0;
         vm.result = [];
-
+	vm.lock=1;
         vm.bigR = 255;
         vm.$var = 0;
         vm.buttonBG = "#ffffff"
         vm.resultColor = '#00FF00';
         vm.activeColour = 0;
+	vm.backupTextInstruction="";
+	vm.QueuePlacement='Last';	
 
+	vm.Mode = 'Status';
+	vm.Initialized = 0;
         //functions
+	vm.setMode=setMode;
         vm.setActiveColor = setActiveColor;
         vm.saveNumber = saveNumber;
         vm.reset = reset;
         vm.tryTheTower = tryTheTower;
-        vm.randomTower = randomTower;
         vm.sendOrder = sendOrder;
         vm.UpdateCubes = UpdateCubes;
-        vm.preDefined = preDefined;
+	vm.StopResume= StopResume;
+	vm.Queue=Queue;
+	//vm.NewOrder = NewOrder;
 
         //Contains the colours of the cubes
         vm.ButtonColour = {
+Status: {
             Left: [
                 [0, 0, 0, 0],
                 [0, 0, 0, 0],
@@ -53,7 +60,46 @@
 	    Middle: [
                 [0, 0, 0, 0]
             ]
-        };
+        },
+NewOrder: {
+            Left: [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ],
+	    Right: [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ],
+	    Middle: [
+                [0, 0, 0, 0]
+            ]
+        },
+CurrentOrder: {
+            Left: [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ],
+	    Right: [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ],
+	    Middle: [
+                [0, 0, 0, 0]
+            ]
+        }};
+
+	vm.ColorControlValue= {Status: [0,0,0,0,0],
+				NewOrder: [0,0,0,0,0],
+				CurrentOrder: [0,0,0,0,0]
+							};
 
         /*
         En sak som bör fixas är att färgerna iallafall har rätt nummer så de är i bokstavsordning
@@ -68,6 +114,7 @@
         activate();
 
         function setActiveColor(int) {
+	    if(vm.Initialized ==0 && vm.Mode=='Status' || vm.Mode=='NewOrder' && vm.Initialized ==1){
             vm.activeColour = int;
             switch (vm.activeColour) {
                 case 1://YELLOW = 1
@@ -85,9 +132,77 @@
                 default:
                     vm.buttonBG= "#FFFFFF";
             }
+	  }
 
         }
+function setMode(Mode) {
+	
+	if (Mode == 'Status'){
+	    vm.Mode = Mode;
+	    document.getElementById('NewOrder').value='NewOrder';
+	    document.getElementById('OrderButtonText').innerHTML='New Order';
+	    document.getElementById('ResetButtonText').innerHTML='Reset all'; 
+	    if (vm.Initialized ==0){
+            	vm.Initialized = 1;
+		vm.lock=1;
+	    	document.getElementById('StatusButtonText').innerHTML='Status';
+	    }
+	    
+	    document.getElementById('TextInstruction').innerHTML='Current status of the blocks';
+	    document.getElementById('NewOrder').style.backgroundColor= "#ffffff";
+	    document.getElementById('buttonCurrentOrder').style.backgroundColor= "#ffffff";
+	    document.getElementById('Status').style.backgroundColor= "#5cd65c";
+	    UpdateCubes(Mode);
+	}
+	else if (Mode == 'NewOrder' && vm.Initialized == 1){
+		vm.Mode = Mode;
+		document.getElementById('buttonCurrentOrder').style.backgroundColor= "#ffffff";
+		
+		if (document.getElementById('NewOrder').value=='NewOrder'){
+			document.getElementById('ResetButtonText').innerHTML='Clear blocks'; 
+			document.getElementById('TextInstruction').innerHTML='Reconfigure the blocks and place order';
+			document.getElementById('Status').style.backgroundColor= "#ffffff";
+			document.getElementById(Mode).style.backgroundColor= "#5cd65c";
 
+			vm.ButtonColour[Mode]=$.extend(true,vm.ButtonColour['Status']);
+			UpdateCubes(Mode);
+			vm.ColorControlValue[Mode][1]=0;
+			vm.ColorControlValue[Mode][2]=0;
+			vm.ColorControlValue[Mode][3]=0;
+			vm.ColorControlValue[Mode][4]=0;
+		        document.getElementById(1).value=vm.ColorControlValue[Mode][1];
+			document.getElementById(2).value=vm.ColorControlValue[Mode][2];
+			document.getElementById(3).value=vm.ColorControlValue[Mode][3];
+			document.getElementById(4).value=vm.ColorControlValue[Mode][4];
+        		document.getElementById('NewOrder').value='PlaceOrder';
+			document.getElementById('OrderButtonText').innerHTML='Place Order'; 
+			vm.lock=0;
+		}
+		else if(document.getElementById('NewOrder').value=='PlaceOrder'){
+			document.getElementById('NewOrder').style.backgroundColor= "#ffffff";
+			document.getElementById('NewOrder').value='NewOrder';
+			document.getElementById('OrderButtonText').innerHTML='New Order';
+			UpdateCubes(Mode);
+			document.getElementById('TextInstruction').innerHTML='Order placed';
+			vm.lock=1;
+		}
+
+	}
+	else if (Mode == 'CurrentOrder' && vm.Initialized == 1){
+		vm.Mode = Mode;
+		document.getElementById('OrderButtonText').innerHTML='New Order';
+		document.getElementById('NewOrder').value='NewOrder';
+		document.getElementById('TextInstruction').innerHTML='This is the current order under construction';
+		document.getElementById('Status').style.backgroundColor= "#ffffff";
+		document.getElementById('NewOrder').style.backgroundColor= "#ffffff";
+		document.getElementById('buttonCurrentOrder').style.backgroundColor= "#5cd65c";
+		document.getElementById('ResetButtonText').innerHTML='Terminate Order'; 
+		UpdateCubes(Mode);
+	}
+	else if (Mode == 'StopResume' && vm.Initialized == 1){
+	StopResume();
+	}
+}
         function activate() {
             $scope.$on('closeRequest', function () {
                 dashboardService.closeWidget(vm.widget.id);
@@ -125,17 +240,69 @@
          * @param column
          * @param reset
          */
-        function setColor(btn,location, row, column, setOnly, reset) {
+        function setColor(btn,Mode,location, row, column, setOnly, reset) {
           
             var property = document.getElementById(btn);
-            if (!setOnly) {
-                if(vm.ButtonColour[location][row][column] == vm.activeColour)
-                    vm.ButtonColour[location][row][column] = 0;
-                else
-                vm.ButtonColour[location][row][column] = vm.activeColour;
+	      if (reset) {
+		if(Mode=='Status'){
+			vm.lock=0;
+            		vm.Initialized = 0;
+	    		document.getElementById('StatusButtonText').innerHTML='Confirm';
+	    		document.getElementById('TextInstruction').innerHTML='Initialize positions of the blocks and confirm';
+			vm.ColorControlValue[Mode][1]=0;
+			vm.ColorControlValue[Mode][2]=0;
+			vm.ColorControlValue[Mode][3]=0;
+			vm.ColorControlValue[Mode][4]=0;
+			property.style.backgroundColor = "#FFFFFF";
+                	vm.ButtonColour[Mode][location][row][column] = 0;
+			document.getElementById('ProggressUpdate').innerHTML='No orders under construction';
+		}
+		else if(Mode=='NewOrder' && vm.lock==0){
+			vm.ColorControlValue[Mode][1]=vm.ColorControlValue['Status'][1];
+			vm.ColorControlValue[Mode][2]=vm.ColorControlValue['Status'][2];
+			vm.ColorControlValue[Mode][3]=vm.ColorControlValue['Status'][3];
+			vm.ColorControlValue[Mode][4]=vm.ColorControlValue['Status'][4];
+			property.style.backgroundColor = "#FFFFFF";
+                	vm.ButtonColour[Mode][location][row][column] = 0;
+		}
+            
             }
-		alert(property);
-            switch (vm.ButtonColour[location][row][column]) {
+	    else{
+	    	if(vm.Initialized ==0 && Mode=='Status' || Mode=='NewOrder' && vm.Initialized ==1 && vm.lock==0){
+		    if (!setOnly && vm.activeColour>0) {
+		        if(vm.ButtonColour[Mode][location][row][column] == vm.activeColour){
+		            vm.ButtonColour[Mode][location][row][column] = 0;
+			    if(Mode=='Status'){
+			    vm.ColorControlValue[Mode][vm.activeColour]= parseInt(vm.ColorControlValue[Mode][vm.activeColour]) - 1;
+			    }
+			    else if(Mode=='NewOrder'){
+				vm.ColorControlValue[Mode][vm.activeColour]= parseInt(vm.ColorControlValue[Mode][vm.activeColour]) + 1;
+			    }
+			}
+		        else{
+				if(vm.ButtonColour[Mode][location][row][column] != 0){
+				   if(Mode=='Status'){
+					vm.ColorControlValue[Mode][vm.ButtonColour[Mode][location][row][column]]=parseInt(vm.ColorControlValue[Mode][vm.ButtonColour[Mode][location][row][column]]) - 1;
+					vm.ButtonColour[Mode][location][row][column] = vm.activeColour;
+				   }
+				   else if(Mode=='NewOrder' && vm.ColorControlValue[Mode][vm.activeColour]>0){
+					vm.ColorControlValue[Mode][vm.ButtonColour[Mode][location][row][column]]=parseInt(vm.ColorControlValue[Mode][vm.ButtonColour[Mode][location][row][column]]) + 1;
+					vm.ButtonColour[Mode][location][row][column] = vm.activeColour;
+				   }
+				}
+                	
+				if(Mode=='Status'){
+					vm.ColorControlValue[Mode][vm.activeColour]=parseInt(vm.ColorControlValue[Mode][vm.activeColour]) + 1;
+					vm.ButtonColour[Mode][location][row][column] = vm.activeColour;
+				   }
+				   else if(Mode=='NewOrder' && vm.ColorControlValue[Mode][vm.activeColour]>0){
+					vm.ColorControlValue[Mode][vm.activeColour]=parseInt(vm.ColorControlValue[Mode][vm.activeColour]) - 1;
+					vm.ButtonColour[Mode][location][row][column] = vm.activeColour;
+				   }
+		     	}
+		     }
+		}
+            switch (vm.ButtonColour[Mode][location][row][column]) {
                 case 1://YELLOW = 1
                     property.style.backgroundColor = "#ffff66";
                     break;
@@ -151,23 +318,18 @@
                 default: //white by default
                     property.style.backgroundColor = "#FFFFFF";
             }
-            if (reset) {
-                property.style.backgroundColor = "#FFFFFF"
-                vm.ButtonColour[location][row][column] = 0;
-            }
+	  }
+	document.getElementById(1).value=vm.ColorControlValue[Mode][1];
+	document.getElementById(2).value=vm.ColorControlValue[Mode][2];
+	document.getElementById(3).value=vm.ColorControlValue[Mode][3];
+	document.getElementById(4).value=vm.ColorControlValue[Mode][4];
+	
         }
 
-        /**sendOrder();
-         * Updates the colour of the button,
-         * It will change the colour!
-         * @param row
-         * @param column
-         */
-        function saveNumber(row, column) {
-		var meep="Left";
-	setColor('button12',meep, row, column, 1, 0);
-            <!--setColor('button' + eval(row * 10 + column + 11),meep, row, column, 0, 0);-->
-            tryTheTower(0);
+        function saveNumber(btn,location,row, column) {
+	    setColor(btn,vm.Mode,location, row, column, 0, 0);
+           //
+            //tryTheTower(0);
         }
 
         /**
@@ -177,70 +339,61 @@
          * @param column
          * @constructor
          */
-        function UpdateCubes(location,row, column) {
-            setColor('button' + eval(row * 10 + column + 11),location, row, column, 1, 0);
-            tryTheTower(0);
+        function UpdateCubes(Mode) {
+            //setColor('button' + eval(row * 10 + column + 11),location, row, column, 1, 0);
+            //tryTheTower(0);
+	    for (var i = 0; i < 4; i++) {
+		    setColor('button' + eval(i + 311),Mode,'Middle', 0, i, 1, 0);
+                for (var j = 0; j < 4; j++) {
+                    setColor('button' + eval(i * 10 + j + 111),Mode,'Left', i, j, 1, 0);
+		    setColor('button' + eval(i * 10 + j + 211),Mode,'Right', i, j, 1, 0);
+                }
+            }
         }
 
         /**
          * Resets the colour of every button.
          */
-        function reset() {toString()
-            for (var i = 0; i < 2; i++) {
+        function reset() {
+            for (var i = 0; i < 4; i++) {
+		    setColor('button' + eval(i + 311),vm.Mode,'Middle', 0, i, 0, 1);
                 for (var j = 0; j < 4; j++) {
-                    setColor('button' + eval(i * 10 + j + 11), i, j, 0, 1);
+                    setColor('button' + eval(i * 10 + j + 111),vm.Mode,'Left', i, j, 0, 1);
+		    setColor('button' + eval(i * 10 + j + 211),vm.Mode,'Right', i, j, 0, 1);
                 }
             }
             var property = document.getElementById('buttonBuild');
             property.style.backgroundColor = "#ffffff";
         }
+	
+	function StopResume(){
+	if (document.getElementById('StopResumeButtonText').innerHTML=='Stop'){
+		document.getElementById('StopResumeButtonText').innerHTML='Resume';
+		document.getElementById('ProggressUpdate').innerHTML='All orders have been put on hold';
+	}
+	else{
+	    document.getElementById('StopResumeButtonText').innerHTML='Stop';
+	    document.getElementById('ProggressUpdate').innerHTML='Resuming operations';
+	}
+	}	
 
-        /**
-         * Creates a predefined tower.
-         */
-        function preDefined(number) {
-            switch(number) {
-                case 1://The Swedish flag.
-                    reset();
-                    for (var column = 0; column < 4; column++) {
-                        for (var row = 1; row > -1; row--) {
-                            if(row == 1 || column == 1)
-                                vm.ButtonColour.kub[row][column] = 1;
-                            else
-                                vm.ButtonColour.kub[row][column] = 4;
-                            UpdateCubes(row, column);
-                        }
-                    }
-                    break;
-                case 2://Plains, sky and sun.
-                    reset();
-                    for (var column = 0; column < 4; column++) {
-                        for (var row = 1; row > -1; row--) {
-                            if(row == 0)
-                                vm.ButtonColour.kub[row][column] = 2;
-                            else if(row > 1 && column > 1)
-                                vm.ButtonColour.kub[row][column] = 1;
-                            else
-                                vm.ButtonColour.kub[row][column] = 4;
-                            UpdateCubes(row, column);
-                        }
-                    }
-                    break;
-                case 3:
-                    reset();
-                    for (var column = 0; column < 4; column++) {
-                        for (var row = 1; row > -1; row--) {
-                            if(row == 0 && column == 1) vm.ButtonColour.kub[row][column] = 1;sendOrder();
-                            if(row == 0 && column == 2) vm.ButtonColour.kub[row][column] = 2;
-                            if(row == 1 && column == 1) vm.ButtonColour.kub[row][column] = 3;
-                            if(row == 1 && column == 2) vm.ButtonColour.kub[row][column] = 4;
-                            UpdateCubes(row, column);
-                        }
-                    }
-                    break;
-            }
-
-        }
+	function Queue(){
+		switch(document.getElementById('buttonQueue').value){
+			case "1":
+				alert('hej');
+				document.getElementById('buttonQueue').value='2';
+				document.getElementById('buttonQueueText').innerHTML='Place first in Queue';
+				break;
+			case "2":
+				document.getElementById('buttonQueue').value='3';
+				document.getElementById('buttonQueueText').innerHTML='Place next in Queue';
+				break;
+			case "3": 
+				document.getElementById('buttonQueue').value='1';
+				document.getElementById('buttonQueueText').innerHTML='Place Last in Queue';
+		}
+	}
+	
 
         /**
          * Checks if the tower is allowed to be built and
@@ -282,27 +435,6 @@
             }
         }
 
-        /**
-         * Creates a random coloured tower.
-         */
-        function randomTower() {
-            for (var column = 0; column < 4; column++) {
-                var stopPlacingCubes = 0;
-                for (var row = 0; row < 2; row++) {
-                    var tempColour = Math.floor((Math.random() * 5));
-                    vm.debug = tempColour;
-                    if(tempColour && !stopPlacingCubes){
-                        vm.ButtonColour.kub[row][column] = tempColour;
-                        vm.debug = tempColour;
-                    }
-                    else{
-                        vm.ButtonColour.kub[row][column] = 0;
-                        stopPlacingCubes = 1;
-                    }
-                    UpdateCubes(row, column);
-                }
-            }
-        }
 
     }
 })();
